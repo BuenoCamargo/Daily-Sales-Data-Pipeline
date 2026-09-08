@@ -31,6 +31,7 @@
  discard   publish
  staging   Analytics
 ´´´
+
 ## 1. Visão geral
 
 Pipeline de dados batch desenvolvido para simular o processamento diário de vendas de um e-commerce, desde a extração incremental da origem até a disponibilização de dados tratados para Analytics.
