@@ -115,7 +115,7 @@ O uso de >=, em vez de >, é deliberado.
 
 Durante os testes do projeto foi identificado um failure mode em que um novo registro poderia possuir exatamente o mesmo updated_at do watermark já salvo. Com >, esse registro poderia nunca ser extraído.
 A estratégia adotada foi aceitar uma pequena sobreposição entre execuções:
-
+```
 watermark anterior
         │
         ▼
@@ -126,7 +126,7 @@ alguns registros podem ser lidos novamente
         │
         ▼
 downstream precisa ser idempotente
-
+```
 Essa decisão prioriza evitar perda silenciosa de dados, mesmo que isso gere duplicação controlada na camada RAW.
 O watermark só é avançado depois que os registros extraídos foram persistidos com sucesso no RAW.
 
