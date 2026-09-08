@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Pytest
+.pytest_cache/
+
+# Generated databases
+*.db
+
+# Generated RAW data
+data/raw/orders/*.csv
+
+# Pipeline state
+data/state/orders_state.json
+
+# Temporary analytics builds
+data/curated/*_building.db
