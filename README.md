@@ -1,36 +1,6 @@
 # Daily Sales Data Pipeline
-```text
-             SOURCE
-              │
-              │ incremental extraction
-              │ updated_at >= watermark
-              ▼
-         RAW / CSV
-       append + history
-              │
-              ▼
-       schema validation
-              │
-              ▼
-       parsing / validation
-          ┌───┴────┐
-          │        │
-        valid    invalid
-          │        │
-          ▼        ▼
-      CURATED   QUARANTINE
-          │
-          ▼
-   staging analytics.db
-          │
-       success?
-       │      │
-      no     yes
-       │      │
-       ▼      ▼
- discard   publish
- staging   Analytics
-```
+<img width="1254" height="1254" alt="PipelineArchiteture" src="https://github.com/user-attachments/assets/891f8161-a3aa-45eb-aef2-194c1d42c17e" />
+
 
 ## 1. Visão geral
 
@@ -97,31 +67,7 @@ flowchart LR
 
 ### Visão simplificada do fluxo
 
-```text
-SOURCE
-   │
-   │ updated_at >= watermark
-   ▼
-RAW
-   │
-   ▼
-Schema Validation
-   │
-   ▼
-Parsing / Business Validation
-   │
-   ├──────── inválido ────────► QUARANTINE
-   │
-   ▼
-CURATED / CURRENT STATE
-   │
-   ▼
-STAGING ANALYTICS
-   │
-   │ processamento concluído com sucesso
-   ▼
-ANALYTICS
-```
+
 
 ## 5. Estrutura do projeto
 ```text
@@ -161,16 +107,13 @@ project-01-sales-pipeline/
 ## 6. Como o pipeline funciona
 ### 6.1 Ingestão incremental e watermark
 Na primeira execução, como ainda não existe um estado anterior, o pipeline realiza uma carga completa da tabela de pedidos.
-
 Depois que os dados são persistidos na camada RAW, o maior updated_at processado é armazenado em: data/state/orders_state.json.
-
 Nas execuções seguintes, esse valor funciona como um watermark.
 
 Em vez de consultar novamente toda a origem, o pipeline busca registros utilizando uma condição equivalente a WHERE updated_at >= ?
 O uso de >=, em vez de >, é deliberado.
 
 Durante os testes do projeto foi identificado um failure mode em que um novo registro poderia possuir exatamente o mesmo updated_at do watermark já salvo. Com >, esse registro poderia nunca ser extraído.
-
 A estratégia adotada foi aceitar uma pequena sobreposição entre execuções:
 
 watermark anterior
@@ -185,7 +128,6 @@ alguns registros podem ser lidos novamente
 downstream precisa ser idempotente
 
 Essa decisão prioriza evitar perda silenciosa de dados, mesmo que isso gere duplicação controlada na camada RAW.
-
 O watermark só é avançado depois que os registros extraídos foram persistidos com sucesso no RAW.
 
 ### 6.2 RAW
@@ -194,17 +136,16 @@ Os arquivos anteriores não são sobrescritos.
 
 A camada RAW funciona como histórico dos dados recebidos pelo pipeline e permite:
 
-reprocessar dados;
-investigar falhas;
-reproduzir estados anteriores;
-desacoplar ingestão e transformação.
+  * reprocessar dados;
+  * investigar falhas;
+  * reproduzir estados anteriores;
+  * desacoplar ingestão e transformação.
 
 Como a estratégia de ingestão utiliza overlap, registros duplicados e múltiplas versões de um mesmo pedido podem existir no RAW.
 Essa duplicação é esperada e tratada posteriormente durante a construção da camada curated.
 
 ### 6.3 Schema validation
 Antes de processar as linhas de um arquivo RAW, o pipeline verifica se as colunas obrigatórias estão presentes.
-
 Entre os campos esperados estão:
 
     * order_id
@@ -214,37 +155,12 @@ Entre os campos esperados estão:
     * updated_at
 
 Uma diferença importante é feita entre dois tipos de problemas.
-
 Um arquivo sem uma coluna obrigatória representa uma quebra estrutural do contrato esperado e interrompe o processamento.
-
 Já um problema localizado em uma linha, como um order_id inválido ou um amount incorreto, pode ser isolado na quarantine sem necessariamente invalidar todo o lote.
 
 
 ### 6.4 Parsing e validação
 Depois da validação estrutural, cada registro passa por duas etapas conceitualmente diferentes.
-
-RAW ROW
-   │
-   ▼
-Parsing
-   │
-   ├── não pode ser interpretado
-   │          │
-   │          ▼
-   │      QUARANTINE
-   │
-   ▼
-Business Validation
-   │
-   ├── viola uma regra
-   │          │
-   │          ▼
-   │      QUARANTINE
-   │
-   ▼
-CURATED
-Parsing
-
 O parsing verifica se o dado bruto pode ser interpretado no formato esperado.
 
 Exemplos:
@@ -255,31 +171,23 @@ Exemplos:
     * status não pode estar vazio.
 
 Os timestamps válidos são normalizados para um formato canônico: YYYY-MM-DD HH:MM:SS
-
 A normalização também permite que a comparação de versões por updated_at seja feita de maneira consistente.
 
 **Validação**
 
 Depois que o registro pode ser interpretado, são verificadas regras de validade do dado.
-
 Um exemplo implementado é: amount > 0
-
 Assim, parsing e validação possuem responsabilidades diferentes:
 
     Parsing responde se o dado pode ser interpretado.
 
     Validação responde se o dado interpretado satisfaz as regras esperadas.
+    
 ### 6.5 Curated e resolução de versões
-Os registros válidos são carregados na tabela:
-
-orders_current
-
+Os registros válidos são carregados na tabela: orders_current
 A tabela representa o estado atual conhecido de cada pedido.
-
 Como o RAW pode conter duplicatas e versões recebidas fora de ordem, a carga utiliza UPSERT com proteção por updated_at.
-
 Uma versão recebida só substitui a versão existente quando for mais recente.
-
 Conceitualmente:
 
     - pedido 101 - versão 10:00
@@ -287,13 +195,11 @@ Conceitualmente:
     - pedido 101 - versão 12:00
 
 Mesmo que a versão das 12:00 seja processada depois da versão das 15:00, ela não pode regredir o estado atual do pedido.
-
 A condição utilizada no UPSERT garante que:" incoming.updated_at > current.updated_at " seja necessária para realizar a atualização.
-
 Isso torna o processamento curated idempotente e resistente à chegada fora de ordem de versões antigas
+
 ### 6.6 Quarantine
 Registros que não podem ser enviados para a camada curated são preservados em: data/quarantine/quarantine.db
-
 A quarantine mantém os valores brutos como texto sempre que possível, permitindo investigar exatamente o conteúdo que causou o problema.
 
 Cada registro contém também informações como:
@@ -316,11 +222,8 @@ Exemplos de problemas tratados incluem:
     -Identidade dos registros da quarantine
 
 A quarantine também precisa ser idempotente.
-
 Reprocessar o mesmo RAW não deve criar indefinidamente a mesma ocorrência lógica.
-
 Para isso, o pipeline cria uma quarantine_key determinística utilizando SHA-256.
-
 A chave é calculada a partir de campos estáveis do registro:
 
     * order_id
@@ -332,69 +235,17 @@ A chave é calculada a partir de campos estáveis do registro:
 
 Campos como detected_at e source_file não fazem parte da identidade, pois podem mudar entre execuções mesmo quando o problema lógico é o mesmo.
 
-O resultado é:
-
-mesmo conteúdo + mesmo erro
-        ↓
-mesma quarantine_key
-        ↓
-ON CONFLICT DO NOTHING
-        ↓
-sem duplicação lógica
-
-Ao mesmo tempo:
-
-nova versão
-ou
-conteúdo diferente
-ou
-erro diferente
-        ↓
-nova quarantine_key
-        ↓
-novo registro preservado
-
 ### 6.7 Publicação segura do Analytics
 Uma das preocupações do pipeline é evitar que uma falha durante o rebuild destrua a última versão válida dos dados analíticos.
-
 Por isso, o banco oficial não é removido antes do processamento.
-
-Primeiro é construído um banco temporário:
-
-analytics_building.db
-
-O fluxo é:
-
-Analytics atual
-      │
-      │ continua disponível
-      ▼
-
-construir staging
-      │
-      ▼
-processamento completo?
-   │             │
-  não           sim
-   │             │
-   ▼             ▼
-descartar      promover staging
-staging        para Analytics
-   │
-   ▼
-Analytics anterior
-permanece disponível
-
+Primeiro é construído um banco temporário: analytics_building.db
 Somente depois que a construção termina com sucesso o staging substitui a versão oficial.
-
 Essa estratégia protege o consumidor contra um estado parcialmente construído ou contra a remoção do último dataset válido durante uma falha.
 
 ## 7. Data Quality e failure modes
 
 O pipeline diferencia problemas estruturais do arquivo, problemas de parsing e violações de regras de validação.
-
 Um erro estrutural, como a ausência de uma coluna obrigatória, interrompe o processamento porque o arquivo deixou de atender ao schema esperado.
-
 Problemas localizados em registros individuais são tratados de forma diferente. Sempre que possível, o registro bruto é preservado na quarantine para investigação posterior, enquanto os demais registros válidos continuam sendo processados.
 
 | Cenário                                         | Comportamento esperado                       |
@@ -415,111 +266,81 @@ Problemas localizados em registros individuais são tratados de forma diferente.
 
 
 Essa abordagem segue um princípio importante do projeto: nem toda falha de qualidade possui a mesma gravidade.
-
 Uma linha inválida pode ser isolada. Já uma quebra estrutural do schema pode indicar que o contrato de dados esperado mudou e, por isso, deve impedir a publicação de um novo estado analítico.
 
 ## 8. Testes
 O projeto possui uma suíte automatizada utilizando pytest.
-
 Estado atual:
 
-33 tests collected
-33 passed
+  33 tests collected
+  33 passed
 
 Os testes cobrem diferentes níveis do processamento, incluindo parsing, validação, UPSERT, idempotência, quarantine e comportamento do pipeline diante de falhas.
-
 Entre os cenários testados estão:
 
-parsing de valores válidos e inválidos;
-ausência de campos obrigatórios;
-timestamps inválidos;
-valores de amount inválidos;
-inserção de novos pedidos;
-atualização por versões mais recentes;
-proteção contra regressão causada por versões antigas;
-reprocessamento do mesmo RAW;
-múltiplos arquivos RAW com versões fora de ordem;
-idempotência da quarantine;
-order_id = NULL na identidade da quarantine;
-registros distintos com order_id = NULL;
-diferentes erros para o mesmo conteúdo bruto;
-novas versões de um registro já presente na quarantine;
-falha durante construção do Analytics;
-preservação do Analytics anterior;
-RAW vazio;
-lote misto contendo registros válidos e inválidos.
+  parsing de valores válidos e inválidos;
+  ausência de campos obrigatórios;
+  timestamps inválidos;
+  valores de amount inválidos;
+  inserção de novos pedidos;
+  atualização por versões mais recentes;
+  proteção contra regressão causada por versões antigas;
+  reprocessamento do mesmo RAW;
+  múltiplos arquivos RAW com versões fora de ordem;
+  idempotência da quarantine;
+  order_id = NULL na identidade da quarantine;
+  registros distintos com order_id = NULL;
+  diferentes erros para o mesmo conteúdo bruto;
+  novas versões de um registro já presente na quarantine;
+  falha durante construção do Analytics;
+  preservação do Analytics anterior;
+  RAW vazio;
+  lote misto contendo registros válidos e inválidos.
 
-A suíte pode ser executada com:
-
-python -m pytest -v
+A suíte pode ser executada com: python -m pytest -v
 
 Os testes foram utilizados não apenas para verificar o código final, mas também para reproduzir failure modes encontrados durante o desenvolvimento e evitar regressões após refatorações.
 
 ## 9. Principais decisões de engenharia
+
 Incremental por updated_at em vez de CDC
 
 O cenário possui volume diário moderado, processamento batch e campos updated_at disponíveis nas principais tabelas.
-
 Embora CDC fosse uma alternativa possível, adicionaria complexidade operacional desnecessária para a primeira versão.
-
 Por isso, a implementação utiliza extração incremental baseada em watermark.
 
 Trade-off: a solução é mais simples, mas depende da qualidade e confiabilidade do updated_at fornecido pela origem.
-
 Overlap com >= em vez de >
 
-Inicialmente, a ingestão utilizava:
-
-updated_at > watermark
+Inicialmente, a ingestão utilizava: updated_at > watermark
 
 Durante os testes foi identificado que um registro com timestamp exatamente igual ao watermark poderia nunca ser extraído.
-
-A condição foi alterada para:
-
-updated_at >= watermark
+A condição foi alterada para: updated_at >= watermark
 
 Isso cria uma pequena sobreposição entre execuções.
-
 A decisão foi aceitar duplicação controlada em vez de correr o risco de perda silenciosa de dados.
-
 Essa escolha exige que as etapas downstream sejam idempotentes.
 
 RAW preservado
 
 Os arquivos RAW não são sobrescritos a cada execução.
-
 Essa decisão permite reprocessamento, investigação e reprodução dos dados recebidos pelo pipeline.
-
 Como consequência, o RAW pode conter múltiplas versões e registros repetidos.
-
 A camada curated é responsável por resolver essas duplicações.
 
 UPSERT protegido por versão
-
 A tabela orders_current representa o estado atual conhecido de cada pedido.
-
-Uma atualização só ocorre quando a versão recebida possui:
-
-incoming.updated_at > current.updated_at
-
+Uma atualização só ocorre quando a versão recebida possui: incoming.updated_at > current.updated_at
 Isso impede que uma versão antiga processada posteriormente substitua um estado mais recente.
 
 Quarantine para problemas localizados
 
 Um único registro inválido não deve necessariamente impedir a disponibilização de milhares de registros válidos.
-
 Por isso, erros localizados são direcionados para uma quarantine persistente.
-
 O dado bruto é preservado sempre que possível para facilitar investigação e remediação.
 
 Identidade determinística da quarantine
-
-Utilizar apenas:
-
-order_id + updated_at + error_code
-
-não foi suficiente para garantir idempotência, especialmente quando valores NULL estavam presentes.
-
+Utilizar apenas: order_id + updated_at + error_code não foi suficiente para garantir idempotência, especialmente quando valores NULL estavam presentes.
 A solução adotada foi criar uma quarantine_key utilizando SHA-256 sobre uma representação determinística de:
 
     - order_id
@@ -530,20 +351,17 @@ A solução adotada foi criar uma quarantine_key utilizando SHA-256 sobre uma re
     - error_code
 
 Assim, a identidade não depende das regras de comparação de NULL do banco.
-
 Campos como detected_at e source_file foram deliberadamente excluídos da chave porque podem variar entre reprocessamentos do mesmo problema lógico.
 
 Staging antes da publicação
 
 O pipeline não remove o Analytics válido antes de construir o próximo estado.
-
 A nova versão é criada primeiro em um banco temporário.
-
 Somente após o processamento bem-sucedido ela substitui o banco oficial.
-
 Essa decisão reduz o risco de indisponibilidade causada por uma execução parcialmente concluída.
 
 ## 10. Limitações da V1 e próximas evoluções
+
 Limitações da V1
 
 Esta implementação foi deliberadamente mantida simples para concentrar o projeto nos fundamentos de Engenharia de Dados.
@@ -551,74 +369,41 @@ Esta implementação foi deliberadamente mantida simples para concentrar o proje
 SQLite como ambiente de laboratório
 
 O cenário de negócio considera PostgreSQL e uma read replica, mas o laboratório utiliza SQLite.
-
 Isso torna o projeto reproduzível localmente sem exigir infraestrutura adicional.
-
 A implementação, portanto, não pretende reproduzir características operacionais específicas de PostgreSQL, como concorrência, replicação ou comportamento sob carga real.
 
 Sem atomicidade entre Analytics e Quarantine
 
 Analytics e Quarantine são bancos SQLite separados.
-
 Isso significa que não existe uma única transação capaz de confirmar ou desfazer alterações nos dois bancos simultaneamente.
-
 Por exemplo, é possível que a quarantine seja persistida e uma falha posterior impeça a promoção do novo Analytics.
-
 Essa limitação é conhecida na V1.
 
 Full rebuild da camada analítica
 
 A construção do Analytics reprocessa os arquivos RAW para reconstruir o estado atual.
-
 Essa estratégia é adequada para o volume do laboratório e simplifica o raciocínio sobre idempotência e recuperação.
-
 Para volumes significativamente maiores, seria necessário avaliar processamento incremental também nessa etapa.
 
 Empate de updated_at
 
 A resolução de versões depende de updated_at.
-
 Quando duas versões diferentes possuem exatamente o mesmo timestamp, o pipeline não possui atualmente uma segunda chave de desempate proveniente da origem.
-
 Esse é um limite do contrato disponível nesta versão.
-
 Ausência de orquestração e observabilidade operacional
-
 A V1 não utiliza Airflow, Dagster ou outro orquestrador.
-
 Também não possui métricas, alertas, dashboards ou monitoramento de freshness em produção.
-
 As falhas são tratadas no nível do processamento e validadas por testes, mas uma evolução real de produção exigiria observabilidade operacional.
 
 Concorrência
 
 O pipeline foi projetado para uma única execução por vez.
-
 O caminho temporário utilizado para construir o Analytics não foi projetado para múltiplas execuções concorrentes.
 
 Possíveis evoluções
 
 Uma evolução do projeto poderia incluir PostgreSQL real com read replica, execução incremental da camada curated, orquestração, métricas de qualidade e freshness, logging estruturado, alertas, reconciliação com métricas financeiras, CI/CD e execução em infraestrutura cloud.
-
 Essas melhorias não foram adicionadas à V1 porque o objetivo desta etapa foi resolver primeiro os problemas fundamentais do pipeline com a menor complexidade necessária.
-
-Eu gosto especialmente da seção “Decisões de engenharia” porque ela transforma coisas que poderiam parecer detalhes de implementação em raciocínio arquitetural.
-
-Por exemplo, em vez de o recrutador enxergar apenas:
-
-“ele usou >= numa query”
-
-ele enxerga:
-
-perda na fronteira → overlap → duplicação → necessidade de idempotência → UPSERT protegido.
-
-E em vez de:
-
-“ele criou um hash”
-
-ele enxerga:
-
-UNIQUE + NULL não resolvia a identidade desejada → definição explícita da identidade lógica → serialização determinística → SHA-256 → idempotência.
 
 ## 11. Tecnologias utilizadas
 
@@ -663,12 +448,6 @@ python src\seed_db.py
 Esse script inicializa o banco SQLite que simula o sistema transacional.
 
 O seed_db.py pertence ao ambiente de laboratório e recria a base de origem para permitir execuções reproduzíveis. Esse comportamento não representa como um pipeline de produção manipularia um banco operacional real.
-
-Essa observação é importante. Não queremos alguém lendo seu código e achando que:
-
-source_path.unlink()
-
-seria algo que você faria contra um PostgreSQL de produção.
 
 5. Executar a ingestão
 python src\ingest.py
@@ -731,8 +510,6 @@ python src\build_curated.py
 
 A nova execução deve extrair apenas a janela incremental definida pelo watermark, mantendo a sobreposição intencional causada pelo uso de >=.
 
-Aqui eu faria uma pausa antes de documentar comandos específicos para update_source.py, porque quero conferir o comportamento atual desse script na revisão final. Não vale colocar no README um comando ou exemplo que não reflita exatamente a versão que será publicada.
-
 ### Reproduzindo o problema de fronteira do watermark
 
 1. Execute a ingestão inicial.
@@ -751,33 +528,10 @@ Utilizado como referência para construção, validação, manutenção e confia
 Designing Data-Intensive Applications — Martin Kleppmann et al.
 Utilizado como referência complementar para raciocínio sobre confiabilidade, idempotência, armazenamento e trade-offs de sistemas de dados.
 
-Eu não adicionaria Spark, Data Mesh ou AWS só porque você possui esses livros. Eles não foram relevantes para a implementação desta V1 e encher a seção de referências faria parecer artificial.
 
 
 
-### Status do projeto
 
-Eu colocaria uma última seção simples:
-
-V1 concluída.
-
-A primeira versão cobre o fluxo completo:
-
-Source
-  ↓
-Incremental ingestion
-  ↓
-RAW
-  ↓
-Schema validation
-  ↓
-Parsing / validation
-  ↓
-Curated + Quarantine
-  ↓
-Safe Analytics publication
-
-Com testes automatizados cobrindo os principais failure modes e propriedades de idempotência do pipeline.
 
 
 
