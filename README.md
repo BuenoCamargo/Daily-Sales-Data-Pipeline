@@ -30,7 +30,7 @@
        ▼      ▼
  discard   publish
  staging   Analytics
-´´´
+```
 
 ## 1. Visão geral
 
