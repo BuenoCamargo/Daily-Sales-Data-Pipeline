@@ -165,10 +165,10 @@ O parsing verifica se o dado bruto pode ser interpretado no formato esperado.
 
 Exemplos:
 
-    * order_id precisa ser convertido para inteiro;
-    * amount precisa ser numérico;
-    * created_at e updated_at precisam possuir timestamps válidos;
-    * status não pode estar vazio.
+*    **order_id precisa ser convertido para inteiro;**
+*    **amount precisa ser numérico;**
+*    **created_at e updated_at precisam possuir timestamps válidos;**
+*    **status não pode estar vazio.**
 
 Os timestamps válidos são normalizados para um formato canônico: YYYY-MM-DD HH:MM:SS
 A normalização também permite que a comparação de versões por updated_at seja feita de maneira consistente.
@@ -190,9 +190,9 @@ Como o RAW pode conter duplicatas e versões recebidas fora de ordem, a carga ut
 Uma versão recebida só substitui a versão existente quando for mais recente.
 Conceitualmente:
 
-    - pedido 101 - versão 10:00
-    - pedido 101 - versão 15:00
-    - pedido 101 - versão 12:00
+-    pedido 101 - versão 10:00
+-    pedido 101 - versão 15:00
+-    pedido 101 - versão 12:00
 
 Mesmo que a versão das 12:00 seja processada depois da versão das 15:00, ela não pode regredir o estado atual do pedido.
 A condição utilizada no UPSERT garante que:" incoming.updated_at > current.updated_at " seja necessária para realizar a atualização.
@@ -204,34 +204,34 @@ A quarantine mantém os valores brutos como texto sempre que possível, permitin
 
 Cada registro contém também informações como:
 
-* código do erro;
-* mensagem do erro;
-* momento da detecção;
-* arquivo de origem;
-* quarantine_key.
+*    **código do erro;**
+*    **mensagem do erro;**
+*    **momento da detecção;**
+*    **arquivo de origem;**
+*    **quarantine_key.**
 
 Exemplos de problemas tratados incluem:
 
-    -INVALID_ORDER_ID_FORMAT
-    -INVALID_AMOUNT_FORMAT
-    -INVALID_AMOUNT
-    -INVALID_CREATED_AT_FORMAT
-    -INVALID_UPDATED_AT_FORMAT
-    -MISSING_CREATED_AT
-    -MISSING_STATUS
-    -Identidade dos registros da quarantine
+*    **INVALID_ORDER_ID_FORMAT**
+*    **INVALID_AMOUNT_FORMAT**
+*    **INVALID_AMOUNT**
+*    **INVALID_CREATED_AT_FORMAT**
+*    **INVALID_UPDATED_AT_FORMAT**
+*    **MISSING_CREATED_AT**
+*    **MISSING_STATUS**
+*    **Identidade dos registros da quarantine**
 
 A quarantine também precisa ser idempotente.
 Reprocessar o mesmo RAW não deve criar indefinidamente a mesma ocorrência lógica.
 Para isso, o pipeline cria uma quarantine_key determinística utilizando SHA-256.
 A chave é calculada a partir de campos estáveis do registro:
 
-    * order_id
-    * status
-    * amount
-    * created_at
-    * updated_at
-    * error_code
+*    **order_id**
+*    **status**
+*    **amount**
+*    **created_at**
+*    **updated_at**
+*    **error_code**
 
 Campos como detected_at e source_file não fazem parte da identidade, pois podem mudar entre execuções mesmo quando o problema lógico é o mesmo.
 
@@ -278,24 +278,24 @@ Estado atual:
 Os testes cobrem diferentes níveis do processamento, incluindo parsing, validação, UPSERT, idempotência, quarantine e comportamento do pipeline diante de falhas.
 Entre os cenários testados estão:
 
-  parsing de valores válidos e inválidos;
-  ausência de campos obrigatórios;
-  timestamps inválidos;
-  valores de amount inválidos;
-  inserção de novos pedidos;
-  atualização por versões mais recentes;
-  proteção contra regressão causada por versões antigas;
-  reprocessamento do mesmo RAW;
-  múltiplos arquivos RAW com versões fora de ordem;
-  idempotência da quarantine;
-  order_id = NULL na identidade da quarantine;
-  registros distintos com order_id = NULL;
-  diferentes erros para o mesmo conteúdo bruto;
-  novas versões de um registro já presente na quarantine;
-  falha durante construção do Analytics;
-  preservação do Analytics anterior;
-  RAW vazio;
-  lote misto contendo registros válidos e inválidos.
+*    **parsing de valores válidos e inválidos;**
+*    **ausência de campos obrigatórios;**
+*    **timestamps inválidos;**
+*    **valores de amount inválidos;**
+*    **inserção de novos pedidos;**
+*    **atualização por versões mais recentes;**
+*    **proteção contra regressão causada por versões antigas;**
+*    **reprocessamento do mesmo RAW;**
+*    **múltiplos arquivos RAW com versões fora de ordem;**
+*    **idempotência da quarantine;**
+*    **order_id = NULL na identidade da quarantine;**
+*    **registros distintos com order_id = NULL;**
+*    **diferentes erros para o mesmo conteúdo bruto;**
+*    **novas versões de um registro já presente na quarantine;**
+*    **falha durante construção do Analytics;**
+*    **preservação do Analytics anterior;**
+*    **RAW vazio;**
+*    **lote misto contendo registros válidos e inválidos.**
 
 A suíte pode ser executada com: python -m pytest -v
 
@@ -343,12 +343,12 @@ Identidade determinística da quarantine
 Utilizar apenas: order_id + updated_at + error_code não foi suficiente para garantir idempotência, especialmente quando valores NULL estavam presentes.
 A solução adotada foi criar uma quarantine_key utilizando SHA-256 sobre uma representação determinística de:
 
-    - order_id
-    - status
-    - amount
-    - created_at
-    - updated_at
-    - error_code
+*    **order_id**
+*    **status**
+*    **amount**
+*    **created_at**
+*    **updated_at**
+*    **error_code**
 
 Assim, a identidade não depende das regras de comparação de NULL do banco.
 Campos como detected_at e source_file foram deliberadamente excluídos da chave porque podem variar entre reprocessamentos do mesmo problema lógico.
