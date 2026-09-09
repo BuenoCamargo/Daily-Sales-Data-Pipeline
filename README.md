@@ -148,11 +148,11 @@ Essa duplicação é esperada e tratada posteriormente durante a construção da
 Antes de processar as linhas de um arquivo RAW, o pipeline verifica se as colunas obrigatórias estão presentes.
 Entre os campos esperados estão:
 
-    * order_id
-    * status
-    * amount
-    * created_at
-    * updated_at
+*    order_id
+*    status
+*    amount
+*    created_at
+*    updated_at
 
 Uma diferença importante é feita entre dois tipos de problemas.
 Um arquivo sem uma coluna obrigatória representa uma quebra estrutural do contrato esperado e interrompe o processamento.
@@ -303,7 +303,7 @@ Os testes foram utilizados não apenas para verificar o código final, mas tamb�
 
 ## 9. Principais decisões de engenharia
 
-Incremental por updated_at em vez de CDC
+**Incremental por updated_at em vez de CDC**
 
 O cenário possui volume diário moderado, processamento batch e campos updated_at disponíveis nas principais tabelas.
 Embora CDC fosse uma alternativa possível, adicionaria complexidade operacional desnecessária para a primeira versão.
@@ -312,7 +312,7 @@ Por isso, a implementação utiliza extração incremental baseada em watermark.
 Trade-off: a solução é mais simples, mas depende da qualidade e confiabilidade do updated_at fornecido pela origem.
 Overlap com >= em vez de >
 
-Inicialmente, a ingestão utilizava: updated_at > watermark
+**Inicialmente, a ingestão utilizava: updated_at > watermark**
 
 Durante os testes foi identificado que um registro com timestamp exatamente igual ao watermark poderia nunca ser extraído.
 A condição foi alterada para: updated_at >= watermark
@@ -321,25 +321,27 @@ Isso cria uma pequena sobreposição entre execuções.
 A decisão foi aceitar duplicação controlada em vez de correr o risco de perda silenciosa de dados.
 Essa escolha exige que as etapas downstream sejam idempotentes.
 
-RAW preservado
+**RAW preservado**
 
 Os arquivos RAW não são sobrescritos a cada execução.
 Essa decisão permite reprocessamento, investigação e reprodução dos dados recebidos pelo pipeline.
 Como consequência, o RAW pode conter múltiplas versões e registros repetidos.
 A camada curated é responsável por resolver essas duplicações.
 
-UPSERT protegido por versão
+**UPSERT protegido por versão**
+
 A tabela orders_current representa o estado atual conhecido de cada pedido.
 Uma atualização só ocorre quando a versão recebida possui: incoming.updated_at > current.updated_at
 Isso impede que uma versão antiga processada posteriormente substitua um estado mais recente.
 
-Quarantine para problemas localizados
+**Quarantine para problemas localizados**
 
 Um único registro inválido não deve necessariamente impedir a disponibilização de milhares de registros válidos.
 Por isso, erros localizados são direcionados para uma quarantine persistente.
 O dado bruto é preservado sempre que possível para facilitar investigação e remediação.
 
-Identidade determinística da quarantine
+**Identidade determinística da quarantine**
+
 Utilizar apenas: order_id + updated_at + error_code não foi suficiente para garantir idempotência, especialmente quando valores NULL estavam presentes.
 A solução adotada foi criar uma quarantine_key utilizando SHA-256 sobre uma representação determinística de:
 
@@ -353,7 +355,7 @@ A solução adotada foi criar uma quarantine_key utilizando SHA-256 sobre uma re
 Assim, a identidade não depende das regras de comparação de NULL do banco.
 Campos como detected_at e source_file foram deliberadamente excluídos da chave porque podem variar entre reprocessamentos do mesmo problema lógico.
 
-Staging antes da publicação
+**Staging antes da publicação**
 
 O pipeline não remove o Analytics válido antes de construir o próximo estado.
 A nova versão é criada primeiro em um banco temporário.
@@ -362,30 +364,30 @@ Essa decisão reduz o risco de indisponibilidade causada por uma execução parc
 
 ## 10. Limitações da V1 e próximas evoluções
 
-Limitações da V1
+**Limitações da V1**
 
 Esta implementação foi deliberadamente mantida simples para concentrar o projeto nos fundamentos de Engenharia de Dados.
 
-SQLite como ambiente de laboratório
+**SQLite como ambiente de laboratório**
 
 O cenário de negócio considera PostgreSQL e uma read replica, mas o laboratório utiliza SQLite.
 Isso torna o projeto reproduzível localmente sem exigir infraestrutura adicional.
 A implementação, portanto, não pretende reproduzir características operacionais específicas de PostgreSQL, como concorrência, replicação ou comportamento sob carga real.
 
-Sem atomicidade entre Analytics e Quarantine
+**Sem atomicidade entre Analytics e Quarantine**
 
 Analytics e Quarantine são bancos SQLite separados.
 Isso significa que não existe uma única transação capaz de confirmar ou desfazer alterações nos dois bancos simultaneamente.
 Por exemplo, é possível que a quarantine seja persistida e uma falha posterior impeça a promoção do novo Analytics.
 Essa limitação é conhecida na V1.
 
-Full rebuild da camada analítica
+**Full rebuild da camada analítica**
 
 A construção do Analytics reprocessa os arquivos RAW para reconstruir o estado atual.
 Essa estratégia é adequada para o volume do laboratório e simplifica o raciocínio sobre idempotência e recuperação.
 Para volumes significativamente maiores, seria necessário avaliar processamento incremental também nessa etapa.
 
-Empate de updated_at
+**Empate de updated_at**
 
 A resolução de versões depende de updated_at.
 Quando duas versões diferentes possuem exatamente o mesmo timestamp, o pipeline não possui atualmente uma segunda chave de desempate proveniente da origem.
@@ -395,12 +397,12 @@ A V1 não utiliza Airflow, Dagster ou outro orquestrador.
 Também não possui métricas, alertas, dashboards ou monitoramento de freshness em produção.
 As falhas são tratadas no nível do processamento e validadas por testes, mas uma evolução real de produção exigiria observabilidade operacional.
 
-Concorrência
+**Concorrência**
 
 O pipeline foi projetado para uma única execução por vez.
 O caminho temporário utilizado para construir o Analytics não foi projetado para múltiplas execuções concorrentes.
 
-Possíveis evoluções
+**Possíveis evoluções**
 
 Uma evolução do projeto poderia incluir PostgreSQL real com read replica, execução incremental da camada curated, orquestração, métricas de qualidade e freshness, logging estruturado, alertas, reconciliação com métricas financeiras, CI/CD e execução em infraestrutura cloud.
 Essas melhorias não foram adicionadas à V1 porque o objetivo desta etapa foi resolver primeiro os problemas fundamentais do pipeline com a menor complexidade necessária.
