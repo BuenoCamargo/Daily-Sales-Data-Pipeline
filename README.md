@@ -136,10 +136,10 @@ Os arquivos anteriores não são sobrescritos.
 
 A camada RAW funciona como histórico dos dados recebidos pelo pipeline e permite:
 
-  * reprocessar dados;
-  * investigar falhas;
-  * reproduzir estados anteriores;
-  * desacoplar ingestão e transformação.
+*    **reprocessar dados;**
+*    **investigar falhas;**
+*    **reproduzir estados anteriores;**
+*    **desacoplar ingestão e transformação.**
 
 Como a estratégia de ingestão utiliza overlap, registros duplicados e múltiplas versões de um mesmo pedido podem existir no RAW.
 Essa duplicação é esperada e tratada posteriormente durante a construção da camada curated.
