@@ -96,6 +96,9 @@ project-01-sales-pipeline/
 │   ├── update_source.py
 │   ├── check_source.py
 │   ├── check_analytics.py
+│   ├── simulate_bad_orders.py
+│   ├── simulate_order_update.py
+│   ├── simulate_watermark_boundary.py
 │   └── check_quarantine.py
 │
 ├── tests/
