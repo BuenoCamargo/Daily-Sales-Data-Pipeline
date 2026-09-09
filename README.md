@@ -1,6 +1,7 @@
 # Daily Sales Data Pipeline
 <img width="1254" height="1254" alt="PipelineArchiteture" src="https://github.com/user-attachments/assets/891f8161-a3aa-45eb-aef2-194c1d42c17e" />
 
+Batch sales data pipeline with incremental ingestion, idempotent processing, data quality checks, quarantine and safe analytics publication.
 
 ## 1. Visão geral
 
